@@ -1,45 +1,30 @@
 import fastapi
-from pydantic import BaseModel
-from typing import Union
-from fastapi.encoders import jsonable_encoder
+import pydantic
+from tortoise.contrib.fastapi import register_tortoise
 
-router = fastapi.APIRouter(prefix="/api")
+from api.router import router
 
+from db.conf import TORTOISE_ORM
+from excentions import handlers as exc_handlers, http as http_exc
 
-@router.get("/get-hello/{name}")
-async def get_hello(name: str = fastapi.Path(..., title="The name to greet")):
-    return {'response': f'Hello {name}! Welcome to Python Plues!'}
+def setup():
+    app = fastapi.FastAPI()
+    app.include_router(router)
 
+    register_tortoise(
+        app=app, config=TORTOISE_ORM, generate_schemas=True, add_exception_handlers=True  
+        )
 
-class Item(BaseModel):
-    name: str
-    description: Union[str, None] = None
-    price: float
-    tax: Union[float, None] = None
+    app.exception_handler(pydantic.ValidationError)(exc_handlers.query_params_exc_handler)
+    app.exception_handler(http_exc.BaseHTTPException)(exc_handlers.request_exc_handler)
+    app.exception_handler(500)(exc_handlers.internal_exc_handler)
 
-items = {
-    "roo": {"name": "Roman", "price": 1000},
-}
+    return app
 
-
-@router.put("/items/{item_id}", response_model=Item)
-async def update_item(item_id: str, item: Item):    
-    update_item_encoded = jsonable_encoder(item)
-    items[item_id] = update_item_encoded
-    return update_item_encoded
-
-
-@router.post("/item")
-async def create_item(item: Item):
-    return item
-
-
-
-app = fastapi.FastAPI()
-app.include_router(router)
+app = setup()
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0")
+    uvicorn.run('main:app', host="0.0.0.0", port=8000, reload=True)
 
